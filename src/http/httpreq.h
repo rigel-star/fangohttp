@@ -7,14 +7,6 @@
 
 typedef struct httpreq {
   char* head;
-  // char* host;
-  // char* user_agent;
-  // char* accept;
-  // char* accept_language;
-  // char* accept_encoding;
-  // char* connection;
-  // char* referer;
-  // char* cookie;
 } httpreq_t;
 
 /**
