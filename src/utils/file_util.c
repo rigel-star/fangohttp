@@ -4,7 +4,7 @@
 int read_html_file( const char f_name[], char dest[] ) {
   strcat( dest, "HTTP/1.1 200 OK\r\n\n" );
   char ff_name[40];
-  memset( ff_name, 0, 30 );
+  memset( ff_name, 0, 40 );
   strcat( ff_name, "./templates/" );
   strncat( ff_name, f_name, strlen( f_name ));
 
@@ -50,4 +50,16 @@ char* get_file_name( FILE* fp ) {
   else {
     return NULL;
   }
+}
+
+char* rem_file_extn( const char* f_name ) {
+  char* nm = strchr( f_name, '.' );
+  if( nm ) {
+    const long int len = nm - f_name;
+    char* ret = malloc( len + 1 );
+    strncpy( ret, f_name, len );
+    ret[len] = '\0';
+    return ret;
+  }
+  return NULL;
 }

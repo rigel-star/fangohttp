@@ -5,8 +5,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "../utils/file_util.h"
+
 typedef struct httpreq {
   char* head;
+  char* file;
 } httpreq_t;
 
 /**
@@ -14,8 +17,8 @@ typedef struct httpreq {
 * @param const char*   Request sent by client.
 * @return              0 on success and -1 on failure.
 */
-int parsehttpreq( const char*, struct httpreq* );
+httpreq_t parsehttpreq( const char[] );
 
-void freehttpreq( struct httpreq* );
+void freehttpreq( httpreq_t* );
 
 #endif

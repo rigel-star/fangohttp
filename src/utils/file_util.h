@@ -22,4 +22,10 @@ int read_file( FILE*, char[] );
 */
 char* get_file_name( FILE* );
 
+/**
+* Get file name without its extension
+* @param const char*  File name.
+*/
+char* rem_file_extn( const char* );
+
 #endif

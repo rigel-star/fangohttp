@@ -10,6 +10,9 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
 #include "httpreq.h"
 #include "../utils/file_util.h"
@@ -31,22 +34,17 @@ int listen_and_serve( int, int, int, const char*, const int, int );
 //close socket
 int sock_close( int );
 
-/*
-* Serve given html file on given path.
-*/
-int serve_webpage( int, struct webpage );
-
 /**
 * @param struct httpreq*
 * @param const char*    File name to serve.
 */
-struct webpage serve( struct httpreq*, const char*, const char* );
+struct webpage serve( httpreq_t*, const char*, const char* );
 
 void freewebpage( struct webpage* );
 
 /**
 * @param const char*    URL path to serve a given http request.
 */
-void path( const char*, struct webpage (*)(struct httpreq*) );
+void path( const char*, struct webpage (*)(httpreq_t*) );
 
 #endif
