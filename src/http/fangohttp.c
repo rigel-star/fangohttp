@@ -1,11 +1,23 @@
 #include "fangohttp.h"
 
-int accept_conn( struct sockaddr_in*, socklen_t* );
+const char* HTTP_404_NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\n";
+const char* HTTP_200_OK = "HTTP/1.1 200 OK\r\n\n";
+const char* HTTP_501_NOT_IMPLTD = "HTTP/1.1 501 Not Implemented\r\n\n";
+
+/*
+* Accept incoming connection.
+*/
+static int accept_conn( struct sockaddr_in*, socklen_t* );
+
+/*
+* Serve file.
+*/
+static int serve_file( int, FILE* );
 
 /*
 * Serve given html file on given path.
 */
-int serve_webpage( int, struct webpage );
+static int serve_webpage( int, struct webpage* );
 
 //count number of webpaths added to application
 static int webpcounter = 0;
@@ -15,7 +27,7 @@ static int sockfd;
 
 //
 static char web_paths[10][100];
-static struct webpage (*web_funcs[10])(struct httpreq*);
+static struct webpage* (*web_funcs[10])(struct httpreq*);
 
 //returns 0 on success or else -1
 int listen_and_serve( domain, type, protocol, addr, port, blog  )
@@ -58,12 +70,14 @@ int domain, type, protocol, port, blog; const char* addr; {
   socklen_t cli_len;
 
   while( 1 ) {
-      accept_conn( &cli_addr, &cli_len );
+      if( accept_conn( &cli_addr, &cli_len ) < 0 ) {
+        fprintf( stderr, "Problem on accepting connection or sending.\n" );
+      }
   }
   return 0;
 }
 
-int accept_conn( struct sockaddr_in *cli_addr, socklen_t* cli_len ) {
+static int accept_conn( struct sockaddr_in *cli_addr, socklen_t* cli_len ) {
   int nsfd; //new socket file descriptor
 	char buffer[2048]; //to store client request
 
@@ -81,68 +95,150 @@ int accept_conn( struct sockaddr_in *cli_addr, socklen_t* cli_len ) {
 
   printf( "\nClient request: \n\n%s\n", buffer );
 
-  httpreq_t hreq;
-  memset( &hreq, 0, sizeof hreq );
-  hreq = parsehttpreq( buffer );
+  httpreq_t* hreq = parsehttpreq( buffer );
 
-  char* file = rem_file_extn( hreq.file );
+  struct webpage* (*call)(httpreq_t*);
+  struct webpage* webp = malloc(sizeof(webpage_t));
 
-  struct webpage (*call)(httpreq_t*);
-  struct webpage webp;
+  if( hreq == NULL ) {
+    char notfound[] =
+            "HTTP/1.1 501 Not Implemented\r\n\n"
+            "<h1>Request not implemented.</h1>\r\n";
+    if( write( nsfd, notfound, sizeof notfound ) < 0 ) {
+      fprintf( stderr, "Error on writing\n" );
+      return -1;
+    }
+    return 0;
+  }
 
-  if( file != NULL ) {
-    int found = 0;
-    if( strncmp( file, "index", 5 ) == 0 ) {
-      printf( "DEBUG:: Request for index file.\n" );
-      for( int idx = 0; idx < webpcounter; idx++ ) {
-        if( strcmp( web_paths[idx], "/" ) == 0 ) {
-            call = web_funcs[idx];
-            webp = call( &hreq );
-            found = 1;
-            break;
-        }
-      }
+  if( strcmp( hreq->URI, "/favicon.ico" ) == 0 ) {
+    int favfd = open( "./favicon.ico", O_RDONLY );
+    if( sendfile( nsfd, favfd, NULL, 950 ) <= 0 ) {
+      fprintf( stderr, "%s\n", "Error on sending favicon: favicon.ico" );
+      close( favfd );
+      return -1;
+    }
+    close( favfd );
+    return 0;
+  }
+
+  char search_for[50];
+  memset( search_for, 0, 50 );
+  bool req_for_pg = false;
+
+  if( strlen( hreq->URI ) <= 1 ) {
+    search_for[0] = '/';
+    req_for_pg = true;
+    printf( "search_for: index\n" );
+  }
+  else {
+    if( strncmp(get_file_extn(hreq->URI), "html", 5) != 0 ) {
+      char actf_name[40];
+      memset( actf_name, 0, 40 );
+      strcat( actf_name, "./static/" );
+      strcat( actf_name, hreq->URI + 1 );
+      actf_name[sizeof actf_name] = 0;
+      strncpy(search_for, actf_name, strlen(actf_name));
+      printf( "search_for: static file\n" );
     }
     else {
-      for( int idx = 0; idx < webpcounter; idx++ ) {
-        if( strcmp( web_paths[idx], file ) == 0 ) {
-            call = web_funcs[idx];
-            webp = call( &hreq );
-            found = 1;
-            break;
-        }
+      req_for_pg = true;
+      strcat( search_for, hreq->URI );
+      printf( "search_for: non_index.html\n" );
+    }
+  }
+
+  search_for[strlen(search_for)] = 0;
+
+  if( req_for_pg ) {
+    char act_search[30];
+    memset( act_search, 0, 30 );
+    if( strcmp( search_for, "/" ) != 0 ) { //hoping html file name is greater than 1 char
+      char* path = rem_file_extn( search_for );
+      strcpy( act_search, path );
+      free( path );
+    }
+    else
+      strcpy( act_search, "/" );
+
+    act_search[sizeof act_search] = 0;
+
+    for( int i = 0; i < 10; i++ ) {
+      if( strcmp( web_paths[i], act_search ) == 0 ) {
+        call = web_funcs[i];
+        webp = call( hreq );
+        break;
       }
     }
-
-    if( found ) {
-      if( serve_webpage( nsfd, webp ) == -1 ) {
-        fprintf( stderr, "Error serving HTML on path \n" );
+    if( serve_webpage( nsfd, webp ) == -1 ) {
+      fprintf( stderr, "Error serving HTML on path %s\n", hreq->URI );
+    }
+  }
+  else {
+    FILE* fp = fopen( search_for, "r" );
+    if( fp == NULL ) {
+      if( write( nsfd, HTTP_404_NOT_FOUND, strlen(HTTP_404_NOT_FOUND) ) < 0 ) {
+        fprintf(stderr, "Error on writing\n");
+        fclose(fp);
         return -1;
       }
     }
     else {
-      char notfound[100] =
-              "HTTP/1.1 404 Not Found\r\n\n"
-              "<h1>404 not found!</h1>\r\n";
-      write( nsfd, notfound, strlen( notfound ));
-    }
-  }
-  else {
-    printf( "DEBUG:: Request for index file.\n" );
-    for( int idx = 0; idx < webpcounter; idx++ ) {
-      if( strcmp( web_paths[idx], "/" ) == 0 ) {
-          call = web_funcs[idx];
-          webp = call( &hreq );
-          break;
+      if( serve_file( nsfd, fp ) == -1 ) {
+        fprintf( stderr, "Error serving file %s\n", search_for );
+        fclose( fp );
+        return -1;
       }
     }
-    if( serve_webpage( nsfd, webp ) == -1 ) {
-      fprintf( stderr, "Error serving HTML on path \n" );
-      return -1;
-    }
+    fclose( fp );
   }
-  free( file );
   return 0;
+}
+
+struct webpage* serve( httpreq_t* req, const char* f_name ) {
+
+  printf( "Request header: %s\n", req->HEAD );
+  printf( "Request URI: %s\n", req->URI );
+  printf( "File name to serve: %s\n", f_name );
+
+  char actf_name[40];
+  memset( actf_name, 0, 40 );
+  strcat( actf_name, "./templates/" );
+  strcat( actf_name, f_name );
+  actf_name[sizeof actf_name] = 0;
+
+  printf( "%s\n", actf_name );
+
+  FILE* fp = fopen( actf_name, "r" );
+  char* webpagestr = get_file_content( fp );
+
+  struct webpage* webpg = malloc(sizeof(webpage_t));
+  size_t wpsz = 0;
+
+  if( webpagestr == NULL ) {
+    wpsz = sizeof HTTP_404_NOT_FOUND;
+    webpg->content = malloc(wpsz + 1);
+    webpg->content[wpsz] = 0;
+
+    strncpy( webpg->content, HTTP_404_NOT_FOUND, wpsz );
+    strcat( webpg->content, "<h1>404 not found!</h1>\n" );
+  }
+  else {
+    size_t hsz = strlen( HTTP_200_OK );
+    wpsz = strlen( webpagestr );
+
+    webpg->content = malloc(wpsz + hsz + 1);
+    webpg->content[wpsz] = 0;
+
+    strncat( webpg->content, HTTP_200_OK, hsz );
+    strncat( webpg->content, webpagestr, wpsz );
+  }
+  return webpg;
+}
+
+void path( const char* serv_path, struct webpage* (*serv_func)(httpreq_t*) ) {
+  strcpy( web_paths[webpcounter], serv_path );
+  web_funcs[webpcounter++] = serv_func;
 }
 
 //close server descriptor returns 0 on success or else -1
@@ -152,42 +248,25 @@ int sock_close( int sockfd ) {
 
 void freewebpage( struct webpage* wp ) {
   free( wp->content );
+  free( wp );
 }
 
-struct webpage serve( httpreq_t* req, const char* f_name, const char* func_name ) {
-  char* webpagestr = malloc( 8000 ); //stores web page
-  memset( webpagestr, 0, 8000 );
-
-  printf( "Request header: %s\n", req->head );
-  printf( "Request file: %s\n", req->file );
-  printf( "Function name:: %s\n", func_name );
-
-  if( *f_name == '\0' ) {
-    printf( "Empty file\n" );
-  }
-
-  if( read_html_file( req->file, webpagestr ) == -1 ) {
-    char notfound[100] =
-            "HTTP/1.1 404 Not Found\r\n\n"
-            "<h1>404 not found!</h1>\r\n";
-    strncpy( webpagestr, notfound, strlen( notfound ));
-  }
-
-  struct webpage webpg = {.content = webpagestr};
-  return webpg;
-}
-
-void path( const char* serv_path, struct webpage (*serv_func)(httpreq_t*) ) {
-  strcpy( web_paths[webpcounter], serv_path );
-  web_funcs[webpcounter++] = serv_func;
-}
-
-//render html page returns 0 on success or else -1
-int serve_webpage( int nsfd, struct webpage webp ) {
-  if (write( nsfd, webp.content, strlen( webp.content )) < 0 ) {
+//Sends webpage to clients. Returns 0 on success or else -1.
+static int serve_webpage( int nsfd, struct webpage* webp ) {
+  if (write( nsfd, webp->content, strlen( webp->content )) < 0 ) {
     return -1;
   }
   sock_close( nsfd );
-  freewebpage( &webp );
+  freewebpage( webp );
+  return 0;
+}
+
+static int serve_file( int nsfd, FILE* fp ) {
+  char* ct = get_file_content( fp );
+  if (write( nsfd, ct, strlen( ct )) < 0 ) {
+    return -1;
+  }
+  free( ct );
+  sock_close( nsfd );
   return 0;
 }

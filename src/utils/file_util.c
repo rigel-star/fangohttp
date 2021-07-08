@@ -1,34 +1,20 @@
 #include "file_util.h"
 
-//TODO: USE HASH TABLE
-int read_html_file( const char f_name[], char dest[] ) {
-  strcat( dest, "HTTP/1.1 200 OK\r\n\n" );
-  char ff_name[40];
-  memset( ff_name, 0, 40 );
-  strcat( ff_name, "./templates/" );
-  strncat( ff_name, f_name, strlen( f_name ));
-
-  FILE* fp = fopen( ff_name, "r" );
-  if( read_file( fp, dest ) < 0 ) {
-    return -1;
-  }
-	fclose( fp );
-  return 0;
-}
-
-int read_file( FILE* fp, char dest[] ) {
-  char* f_name = get_file_name( fp );
+char* get_file_content( FILE* fp ) {
   if ( fp == NULL ) {
-    fprintf( stderr, "%s file missing.\n", f_name );
-    return -1;
+    fprintf( stderr, "File missing.\n" );
+    return NULL;
   }
 
-  char line[100];
-	while( fgets( line, 100, fp )) {
-		strcat( dest, line );
-	}
-  free( f_name );
-  return 0;
+  fseek( fp, 0, SEEK_END );
+  long fsize = ftell( fp );
+  fseek( fp, 0, SEEK_SET );  /* same as rewind(f); */
+
+  char *string = malloc( fsize + 1 );
+  fread( string, 1, fsize, fp );
+
+  string[fsize] = 0;
+  return string;
 }
 
 char* get_file_name( FILE* fp ) {
@@ -61,5 +47,11 @@ char* rem_file_extn( const char* f_name ) {
     ret[len] = '\0';
     return ret;
   }
+  return NULL;
+}
+
+char* get_file_extn( const char* f_name ) {
+  char* ext = strchr( f_name, '.' ) + 1;
+  if( ext ) return ext;
   return NULL;
 }

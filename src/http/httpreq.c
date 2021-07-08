@@ -1,39 +1,61 @@
 #include "httpreq.h"
 
-httpreq_t parsehttpreq( const char reqstr[] ) {
+httpreq_t* parsehttpreq( const char* reqstr ) {
 
-  if( reqstr == NULL ) {
-    httpreq_t hr = {.head="GET / HTTP/1.1", .file="index.html"};
-    return hr;
-  }
+  if( *reqstr == '\0' || reqstr == NULL )
+    return NULL;
 
-  httpreq_t hreq;
+  httpreq_t* hreq = malloc(sizeof(httpreq_t));
 
-  memset( &hreq, 0, sizeof hreq ); //nullify http request in case
-                                  //if it is populated already
-  hreq.head = malloc( 100 );
-  hreq.file = malloc( 50 );
+  char* head = strtok( (char*)reqstr, "\n" );
+  const size_t lenhead = strlen( head );
 
-  char* token = strtok( (char*)reqstr, "\n" );
-  const size_t lenhead = strlen( token );
-  strncpy( hreq.head, token, lenhead );
-  hreq.head[(int)lenhead] = '\0';
+  hreq->HEAD = malloc(lenhead);
+  strncpy( hreq->HEAD, head, lenhead );
+  hreq->HEAD[lenhead] = 0;
 
-  char* actfname = token + 5;
-  char* act = strchr( actfname, ' ' );
-  long int lenfile = act - actfname;
-  char final[30];
-  memset( final, 0, 30 );
-  strncpy( final, actfname, lenfile );
-  final[lenfile] = '\0';
+  const char* emethod = strchr( reqstr, ' ' );
+  char method[emethod - reqstr];
+  strncpy( method, reqstr, emethod - reqstr );
 
-  (lenfile <= 1 || final == NULL) ? strcpy( hreq.file, "index.html\0" ) :
-                  strcpy( hreq.file, final );
+  const char *start_of_path = strchr(reqstr, ' ') + 1;
+  const char *end_of_path = strchr(start_of_path, ' ');
+
+  char path[end_of_path - start_of_path];
+  strncpy(path, start_of_path,  end_of_path - start_of_path);
+
+  char* ver = strchr( start_of_path, ' ' ) + 1;
+  char* ever = strchr( ver, '\0' );
+  char version[ever - ver];
+  strncpy( version, ver, ever - ver );
+
+  size_t path_sz = sizeof path;
+  size_t meth_sz = sizeof method;
+  size_t ver_sz = sizeof version;
+
+  path[path_sz] = 0;
+  method[meth_sz] = 0;
+  version[ver_sz] = 0;
+
+  hreq->URI = malloc(path_sz);
+  memset( hreq->URI, 0, path_sz );
+  strncpy( hreq->URI, path, path_sz );
+
+  hreq->METHOD = malloc(meth_sz);
+  memset( hreq->METHOD, 0, meth_sz );
+  strncpy( hreq->METHOD, method, meth_sz );
+
+  hreq->VERSION = malloc(ver_sz);
+  memset( hreq->VERSION, 0, ver_sz );
+  strncpy( hreq->VERSION, version, ver_sz );
 
   return hreq;
 }
 
 void freehttpreq( httpreq_t* hreq ) {
-  free( hreq->head );
-  free( hreq->file );
+  free( hreq->HEAD );
+  free( hreq->METHOD );
+  free( hreq->URI );
+  free( hreq->VERSION );
+  free( hreq );
 }
