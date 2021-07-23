@@ -23,6 +23,6 @@ can be accessed. First parameter of path() takes URL path and
 second one takes function pointer which handles the behavior of
 that URL(home(), about(), and projects() in our example).
 
-For example: `127.0.0.1/about.html` will be handled by home() because
-in path() function(main function in main.c), "/about" is given as
-first argument to path and about() function is given as second argument.
+For example: `127.0.0.1/about.html` will be handled by about() because 
+in path() function, "/about" is given as first argument to path and about() 
+function is given as second argument.
